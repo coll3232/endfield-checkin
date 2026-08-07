@@ -191,19 +191,39 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         private const val NOTIF_ID_ALREADY = 1002
         private const val NOTIF_ID_FAILED = 1003
 
-        fun schedulePeriodicWork(context: Context) {
+        const val KEY_TARGET_HOUR = "target_hour"
+        const val KEY_TARGET_MINUTE = "target_minute"
+
+        fun schedulePeriodicWork(context: Context, targetHour: Int = 9, targetMinute: Int = 0) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
+            // 오늘/내일 설정한 시:분까지 남은 시간을 딜레이로 계산
+            val now = Calendar.getInstance()
+            val target = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, targetHour)
+                set(Calendar.MINUTE, targetMinute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            if (target.before(now)) {
+                target.add(Calendar.DAY_OF_YEAR, 1)
+            }
+
+            val initialDelayMs = target.timeInMillis - now.timeInMillis
+            Log.d(TAG, "목표 시간 ${targetHour}시 ${targetMinute}분까지 초도 대기 시간: ${initialDelayMs / 1000}초")
+
             val workRequest = PeriodicWorkRequestBuilder<CheckInWorker>(24, TimeUnit.HOURS)
+                .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "EndfieldDailyCheckIn",
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
         }

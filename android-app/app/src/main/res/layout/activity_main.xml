@@ -1,50 +1,179 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#0D0F12">
+    android:background="#0D0F12"
+    android:fillViewport="true">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="명일방주: 엔드필드 자동 출석체크"
-        android:textColor="#FFB800"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
-        android:id="@+id/txtStatus"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="상태 확인 중..."
-        android:textColor="#FFFFFF"
-        android:textSize="13sp"
-        android:layout_marginBottom="12dp" />
+        android:orientation="vertical"
+        android:padding="16dp">
 
-    <Button
-        android:id="@+id/btnCheckNow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="지금 수동 출석체크"
-        android:backgroundTint="#FFB800"
-        android:textColor="#000000"
-        android:layout_marginBottom="12dp" />
+        <!-- Title Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="명일방주: 엔드필드 자동 출석체크"
+            android:textColor="#FFB800"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="SKPORT 웹뷰 (최초 1회 로그인 필요)"
-        android:textColor="#8B949E"
-        android:textSize="12sp"
-        android:layout_marginBottom="4dp" />
+        <!-- Status Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#161B22"
+            android:padding="12dp"
+            android:layout_marginBottom="12dp">
 
-    <WebView
-        android:id="@+id/webView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+            <TextView
+                android:id="@+id/txtStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="상태 확인 중..."
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:layout_marginBottom="6dp" />
 
-</LinearLayout>
+            <TextView
+                android:id="@+id/txtTokenInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="토큰: 감지 대기 중"
+                android:textColor="#8B949E"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Time Picker Section (매일 지정 시/분 실행 설정) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#161B22"
+            android:padding="12dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏰ 백그라운드 출석 실행 시각 설정 (매일)"
+                android:textColor="#FFB800"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="시간(시:분) : "
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/editHour"
+                    android:layout_width="55dp"
+                    android:layout_height="40dp"
+                    android:hint="09"
+                    android:inputType="number"
+                    android:maxLength="2"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#555555"
+                    android:background="#0D0F12"
+                    android:padding="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" 시 "
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/editMinute"
+                    android:layout_width="55dp"
+                    android:layout_height="40dp"
+                    android:hint="00"
+                    android:inputType="number"
+                    android:maxLength="2"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#555555"
+                    android:background="#0D0F12"
+                    android:padding="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" 분"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnSaveTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="실행 시각 저장 및 백그라운드 등록"
+                android:backgroundTint="#388BFD"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Manual Check Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <Button
+                android:id="@+id/btnCheckNow"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="지금 즉시 출석체크"
+                android:backgroundTint="#FFB800"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btnExtractToken"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="토큰 수동 감지"
+                android:backgroundTint="#2EA043"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SKPORT 웹뷰 (로그인 완료 후 자동으로 토큰 추출)"
+            android:textColor="#8B949E"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp" />
+
+        <!-- WebView -->
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="400dp"
+            android:background="#161B22" />
+
+    </LinearLayout>
+</ScrollView>
