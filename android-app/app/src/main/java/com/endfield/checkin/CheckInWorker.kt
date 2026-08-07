@@ -111,34 +111,36 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     private fun performCheckInApi(credToken: String, fullCookie: String): Pair<ResultType, String> {
         val bindingUrl = URL("https://zonai.skport.com/web/v1/game/endfield/binding")
         var gameRoleHeader = ""
-
         val userAgentStr = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        // 쿠키 및 cred 헤더 구성
-        val cookieHeader = when {
-            fullCookie.isNotEmpty() -> fullCookie
-            credToken.contains("=") -> credToken
-            else -> "cred=$credToken; ACCOUNT_TOKEN=$credToken"
+        val cleanToken = try {
+            java.net.URLDecoder.decode(credToken, "UTF-8").trim()
+        } catch (e: Exception) {
+            credToken.trim()
         }
 
-        // cred 추출 시도
-        var actualCred = credToken
-        if (actualCred.isEmpty() && cookieHeader.contains("cred=")) {
-            for (p in cookieHeader.split(";")) {
-                val kv = p.trim().split("=", limit = 2)
-                if (kv.size == 2 && kv[0].equals("cred", ignoreCase = true)) {
-                    actualCred = kv[1]
-                    break
-                }
-            }
+        if (cleanToken.isEmpty()) {
+            return Pair(ResultType.FAILED, "인증 토큰이 비어있습니다. SKPORT 로그인을 진행해 주세요.")
         }
+
+        // 쿠키 헤더 구성: fullCookie 여부와 관계없이 cred 및 ACCOUNT_TOKEN 필수로 보장
+        var cookieHeader = fullCookie.trim()
+        if (!cookieHeader.contains("cred=")) {
+            cookieHeader = if (cookieHeader.isEmpty()) "cred=$cleanToken" else "$cookieHeader; cred=$cleanToken"
+        }
+        if (!cookieHeader.contains("ACCOUNT_TOKEN=")) {
+            cookieHeader = "$cookieHeader; ACCOUNT_TOKEN=$cleanToken"
+        }
+
+        Log.d(TAG, "사용 중인 cred 토큰: ${cleanToken.take(15)}...")
+        Log.d(TAG, "전송 쿠키 헤더: $cookieHeader")
 
         // 1. 바인딩 캐릭터 정보 조회 시도 (sk-game-role 획득)
         try {
             val bConn = bindingUrl.openConnection() as HttpURLConnection
             bConn.requestMethod = "GET"
             bConn.setRequestProperty("Accept", "application/json, text/plain, */*")
-            if (actualCred.isNotEmpty()) bConn.setRequestProperty("cred", actualCred)
+            bConn.setRequestProperty("cred", cleanToken)
             bConn.setRequestProperty("Cookie", cookieHeader)
             bConn.setRequestProperty("platform", "3")
             bConn.setRequestProperty("v", "1.0.0")
@@ -174,7 +176,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         conn.requestMethod = "POST"
         conn.setRequestProperty("Accept", "application/json, text/plain, */*")
         conn.setRequestProperty("Content-Type", "application/json")
-        if (actualCred.isNotEmpty()) conn.setRequestProperty("cred", actualCred)
+        conn.setRequestProperty("cred", cleanToken)
         conn.setRequestProperty("Cookie", cookieHeader)
         conn.setRequestProperty("platform", "3")
         conn.setRequestProperty("v", "1.0.0")
@@ -211,7 +213,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 else -> Pair(ResultType.FAILED, "실패 (코드: $code, 메시지: $msg)")
             }
         } else if (responseCode == 401) {
-            return Pair(ResultType.FAILED, "인증 실패 (HTTP 401): 웹뷰에서 SKPORT 로그아웃 후 다시 로그인해 주세요.")
+            return Pair(ResultType.FAILED, "인증 실패 (HTTP 401): 저장된 토큰이 만료되었거나 올바르지 않습니다. 웹뷰에서 로그아웃 후 다시 로그인해 주세요.")
         }
         return Pair(ResultType.FAILED, "서버 응답 오류 (HTTP $responseCode): $responseString")
     }

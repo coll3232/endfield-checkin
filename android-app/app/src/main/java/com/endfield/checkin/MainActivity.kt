@@ -198,35 +198,53 @@ class MainActivity : AppCompatActivity() {
         if (str.isEmpty()) return
 
         val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
-        val existingFull = prefs.getString(CheckInWorker.KEY_FULL_COOKIE, "") ?: ""
-        if (str.length > existingFull.length || str.contains("cred=")) {
+
+        // cred=... 패턴 우선 정밀 추출
+        if (str.contains("cred=")) {
             prefs.edit().putString(CheckInWorker.KEY_FULL_COOKIE, str).apply()
+            for (p in str.split(";")) {
+                val kv = p.trim().split("=", limit = 2)
+                if (kv.size == 2 && kv[0].equals("cred", ignoreCase = true)) {
+                    val rawVal = kv[1].trim()
+                    if (rawVal.isNotEmpty() && rawVal.length > 10) {
+                        saveToken(rawVal, "Cookie (cred)")
+                        return
+                    }
+                }
+            }
         }
 
+        // account_token 키 추출
         val parts = str.split(";")
         for (part in parts) {
             val kv = part.split("=", limit = 2)
             if (kv.size >= 2) {
                 val k = kv[0].trim().lowercase()
                 val v = kv[1].trim()
-                if (k == "cred" || k == "account_token") {
-                    if (v.isNotEmpty() && v.length > 5) {
-                        saveToken(v, "Cookie ($k)")
-                        break
-                    }
+                if (k == "account_token" && v.length > 10) {
+                    saveToken(v, "Cookie ($k)")
+                    break
                 }
             }
         }
     }
 
     private fun saveToken(token: String, source: String) {
+        val clean = try {
+            java.net.URLDecoder.decode(token, "UTF-8").trim()
+        } catch (e: Exception) {
+            token.trim()
+        }
+
+        if (clean.length < 10) return
+
         val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
         val current = prefs.getString(CheckInWorker.KEY_CRED_TOKEN, null)
 
-        if (current != token) {
-            prefs.edit().putString(CheckInWorker.KEY_CRED_TOKEN, token).apply()
+        if (current != clean) {
+            prefs.edit().putString(CheckInWorker.KEY_CRED_TOKEN, clean).apply()
             runOnUiThread {
-                txtTokenInfo.text = "토큰 감지됨: ${token.take(12)}... ($source)"
+                txtTokenInfo.text = "토큰 저장됨: ${clean.take(12)}... ($source)"
                 txtStatus.text = "상태: SKPORT 로그인 완료"
             }
         }
