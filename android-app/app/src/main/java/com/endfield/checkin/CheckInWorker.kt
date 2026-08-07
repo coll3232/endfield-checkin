@@ -113,34 +113,42 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         var gameRoleHeader = ""
         val userAgentStr = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        val cleanToken = try {
+        var activeCred = try {
             java.net.URLDecoder.decode(credToken, "UTF-8").trim()
         } catch (e: Exception) {
             credToken.trim()
         }
 
-        if (cleanToken.isEmpty()) {
+        val prefs = applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
+        // ACCOUNT_TOKEN 또는 기존 토큰으로 Gryphline OAuth 교환 시도
+        if (activeCred.isNotEmpty()) {
+            val exchangedCred = exchangeAccountTokenToCred(activeCred, userAgentStr)
+            if (!exchangedCred.isNullOrEmpty()) {
+                activeCred = exchangedCred
+                prefs.edit().putString(KEY_CRED_TOKEN, activeCred).apply()
+                Log.d(TAG, "Gryphline OAuth 교환 성공: new cred=${activeCred.take(15)}...")
+            }
+        }
+
+        if (activeCred.isEmpty()) {
             return Pair(ResultType.FAILED, "인증 토큰이 비어있습니다. SKPORT 로그인을 진행해 주세요.")
         }
 
-        // 쿠키 헤더 구성: fullCookie 여부와 관계없이 cred 및 ACCOUNT_TOKEN 필수로 보장
         var cookieHeader = fullCookie.trim()
         if (!cookieHeader.contains("cred=")) {
-            cookieHeader = if (cookieHeader.isEmpty()) "cred=$cleanToken" else "$cookieHeader; cred=$cleanToken"
+            cookieHeader = if (cookieHeader.isEmpty()) "cred=$activeCred" else "$cookieHeader; cred=$activeCred"
         }
         if (!cookieHeader.contains("ACCOUNT_TOKEN=")) {
-            cookieHeader = "$cookieHeader; ACCOUNT_TOKEN=$cleanToken"
+            cookieHeader = "$cookieHeader; ACCOUNT_TOKEN=$activeCred"
         }
-
-        Log.d(TAG, "사용 중인 cred 토큰: ${cleanToken.take(15)}...")
-        Log.d(TAG, "전송 쿠키 헤더: $cookieHeader")
 
         // 1. 바인딩 캐릭터 정보 조회 시도 (sk-game-role 획득)
         try {
             val bConn = bindingUrl.openConnection() as HttpURLConnection
             bConn.requestMethod = "GET"
             bConn.setRequestProperty("Accept", "application/json, text/plain, */*")
-            bConn.setRequestProperty("cred", cleanToken)
+            bConn.setRequestProperty("cred", activeCred)
             bConn.setRequestProperty("Cookie", cookieHeader)
             bConn.setRequestProperty("platform", "3")
             bConn.setRequestProperty("v", "1.0.0")
@@ -176,7 +184,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         conn.requestMethod = "POST"
         conn.setRequestProperty("Accept", "application/json, text/plain, */*")
         conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("cred", cleanToken)
+        conn.setRequestProperty("cred", activeCred)
         conn.setRequestProperty("Cookie", cookieHeader)
         conn.setRequestProperty("platform", "3")
         conn.setRequestProperty("v", "1.0.0")
@@ -213,9 +221,70 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 else -> Pair(ResultType.FAILED, "실패 (코드: $code, 메시지: $msg)")
             }
         } else if (responseCode == 401) {
-            return Pair(ResultType.FAILED, "인증 실패 (HTTP 401): 저장된 토큰이 만료되었거나 올바르지 않습니다. 웹뷰에서 로그아웃 후 다시 로그인해 주세요.")
+            return Pair(ResultType.FAILED, "인증 실패 (HTTP 401): SKPORT 웹뷰에서 로그아웃 후 다시 로그인해 주세요.")
         }
         return Pair(ResultType.FAILED, "서버 응답 오류 (HTTP $responseCode): $responseString")
+    }
+
+    private fun exchangeAccountTokenToCred(accountToken: String, userAgentStr: String): String? {
+        try {
+            // 1. Gryphline OAuth Grant (ACCOUNT_TOKEN -> code)
+            val grantUrl = URL("https://as.gryphline.com/user/oauth2/v2/grant")
+            val gConn = grantUrl.openConnection() as HttpURLConnection
+            gConn.requestMethod = "POST"
+            gConn.setRequestProperty("Content-Type", "application/json")
+            gConn.setRequestProperty("User-Agent", userAgentStr)
+            gConn.connectTimeout = 8000
+            gConn.readTimeout = 8000
+            gConn.doOutput = true
+
+            val grantBody = JSONObject().apply {
+                put("token", accountToken)
+                put("appCode", "skport_web")
+                put("type", 0)
+            }.toString()
+
+            gConn.outputStream.use { it.write(grantBody.toByteArray(charset("utf-8"))) }
+
+            if (gConn.responseCode == 200) {
+                val gRes = gConn.inputStream.bufferedReader().use { it.readText() }
+                val gJson = JSONObject(gRes)
+                val authCode = gJson.optJSONObject("data")?.optString("code", null)
+
+                if (!authCode.isNullOrEmpty()) {
+                    // 2. SKPORT Cred 생성 (code -> cred)
+                    val credUrl = URL("https://zonai.skport.com/web/v1/user/auth/generate_cred_by_code")
+                    val cConn = credUrl.openConnection() as HttpURLConnection
+                    cConn.requestMethod = "POST"
+                    cConn.setRequestProperty("Content-Type", "application/json")
+                    cConn.setRequestProperty("platform", "3")
+                    cConn.setRequestProperty("v", "1.0.0")
+                    cConn.setRequestProperty("User-Agent", userAgentStr)
+                    cConn.connectTimeout = 8000
+                    cConn.readTimeout = 8000
+                    cConn.doOutput = true
+
+                    val credBody = JSONObject().apply {
+                        put("code", authCode)
+                        put("kind", 1)
+                    }.toString()
+
+                    cConn.outputStream.use { it.write(credBody.toByteArray(charset("utf-8"))) }
+
+                    if (cConn.responseCode == 200) {
+                        val cRes = cConn.inputStream.bufferedReader().use { it.readText() }
+                        val cJson = JSONObject(cRes)
+                        val newCred = cJson.optJSONObject("data")?.optString("cred", null)
+                        if (!newCred.isNullOrEmpty()) {
+                            return newCred
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "OAuth 토큰 교환 중 예외 발생: ${e.message}")
+        }
+        return null
     }
 
     private fun sendSystemNotification(title: String, message: String, notificationId: Int) {
