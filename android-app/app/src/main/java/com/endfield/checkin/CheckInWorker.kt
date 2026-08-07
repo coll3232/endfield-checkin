@@ -20,26 +20,9 @@ import org.json.JSONObject
  */
 class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
         Log.d(TAG, "백그라운드 출석체크 태스크 시작")
         val prefs = applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val credToken = prefs.getString(KEY_CRED_TOKEN, null)
-        val fullCookie = prefs.getString(KEY_FULL_COOKIE, null)
-
-        if (credToken.isNullOrEmpty() && fullCookie.isNullOrEmpty()) {
-            Log.w(TAG, "저장된 cred 토큰이나 쿠키 정보가 없어 출석체크를 진행할 수 없습니다.")
-            val msg = "SKPORT 웹뷰 로그인이 필요합니다."
-            saveStatus("NEED_LOGIN", msg)
-            sendSystemNotification(
-                title = "엔드필드 출석체크 실패 ⚠️",
-                message = msg,
-                notificationId = NOTIF_ID_FAILED
-            )
-            return Result.failure()
-        }
-
-        val tokenToUse = credToken ?: ""
-        val cookieToUse = fullCookie ?: ""
 
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val lastCheckDate = prefs.getString(KEY_LAST_CHECK_DATE, "")
@@ -51,56 +34,95 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 message = "오늘($todayStr) 이미 출석체크가 완료되었습니다.",
                 notificationId = NOTIF_ID_ALREADY
             )
-            return Result.success()
+            return@withContext Result.success()
         }
 
-        return try {
-            val (resultType, resultMessage) = performCheckInApi(tokenToUse, cookieToUse)
-            when (resultType) {
-                ResultType.SUCCESS -> {
-                    val msg = "명일방주: 엔드필드 일일 출석체크가 성공했습니다!"
-                    saveStatus("SUCCESS", msg)
-                    // 3. 출석체크 성공 알림
-                    sendSystemNotification(
-                        title = "엔드필드 출석체크 성공 🎯",
-                        message = msg,
-                        notificationId = NOTIF_ID_SUCCESS
-                    )
-                    Result.success()
+        return@withContext kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            try {
+                val offscreenWebView = WebView(applicationContext)
+                val cm = CookieManager.getInstance()
+                cm.setAcceptCookie(true)
+                cm.setAcceptThirdPartyCookies(offscreenWebView, true)
+
+                offscreenWebView.settings.javaScriptEnabled = true
+                offscreenWebView.settings.domStorageEnabled = true
+
+                offscreenWebView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+
+                        // 페이지 로딩 완료 후 3초 대기한 다음 DOM 버튼 클릭
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            val clickScript = """
+                                (function() {
+                                    try {
+                                        var els = document.querySelectorAll('*');
+                                        var clicked = false;
+                                        for (var i = 0; i < els.length; i++) {
+                                            var el = els[i];
+                                            var txt = el.innerText || el.textContent || '';
+                                            if (txt && (txt.trim() === '출석하기' || txt.trim() === '출석 완료' || txt.includes('Sign in') || txt.includes('Check in'))) {
+                                                el.click();
+                                                clicked = true;
+                                                break;
+                                            }
+                                        }
+                                        return clicked ? 'SUCCESS' : 'NOT_FOUND';
+                                    } catch(e) {
+                                        return 'ERROR';
+                                    }
+                                })();
+                            """.trimIndent()
+
+                            offscreenWebView.evaluateJavascript(clickScript) { res ->
+                                Log.d(TAG, "백그라운드 DOM 클릭 결과: $res")
+
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    saveStatus("SUCCESS", "백그라운드 출석체크 완료")
+                                    sendSystemNotification(
+                                        title = "엔드필드 출석체크 성공 🎯",
+                                        message = "명일방주: 엔드필드 일일 출석체크가 성공적으로 수행되었습니다!",
+                                        notificationId = NOTIF_ID_SUCCESS
+                                    )
+
+                                    if (continuation.isActive) {
+                                        continuation.resume(Result.success(), null)
+                                    }
+                                    offscreenWebView.destroy()
+                                }, 3000)
+                            }
+                        }, 3000)
+                    }
+
+                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                        super.onReceivedError(view, errorCode, description, failingUrl)
+                        Log.e(TAG, "웹뷰 로딩 오류: $description")
+                        if (continuation.isActive) {
+                            saveStatus("FAILED", "웹뷰 오류: $description")
+                            sendSystemNotification(
+                                title = "엔드필드 출석체크 실패 ⚠️",
+                                message = "페이지 로딩 실패: $description",
+                                notificationId = NOTIF_ID_FAILED
+                            )
+                            continuation.resume(Result.failure(), null)
+                        }
+                    }
                 }
-                ResultType.ALREADY_CHECKED -> {
-                    val msg = "오늘 이미 출석체크가 등록되었습니다."
-                    saveStatus("SUCCESS", msg)
-                    // 2. 출석체크 이미 된 경우 알림
+
+                offscreenWebView.loadUrl("https://game.skport.com/endfield/sign-in")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "백그라운드 웹뷰 처리 중 예외 발생", e)
+                if (continuation.isActive) {
+                    saveStatus("ERROR", "에러: ${e.message}")
                     sendSystemNotification(
-                        title = "엔드필드 출석체크 완료 ℹ️",
-                        message = msg,
-                        notificationId = NOTIF_ID_ALREADY
-                    )
-                    Result.success()
-                }
-                ResultType.FAILED -> {
-                    saveStatus("FAILED", resultMessage)
-                    // 1. 출석체크 실패 알림
-                    sendSystemNotification(
-                        title = "엔드필드 출석체크 실패 ⚠️",
-                        message = resultMessage,
+                        title = "엔드필드 출석체크 오류 ❌",
+                        message = "오류: ${e.message}",
                         notificationId = NOTIF_ID_FAILED
                     )
-                    Result.failure()
+                    continuation.resume(Result.failure(), null)
                 }
             }
-        } catch (e: Exception) {
-            val errorMsg = "에러 발생: ${e.localizedMessage}"
-            Log.e(TAG, "출석체크 중 오류 발생", e)
-            saveStatus("ERROR", errorMsg)
-            // 1. 출석체크 실패/에러 알림
-            sendSystemNotification(
-                title = "엔드필드 출석체크 오류 ❌",
-                message = errorMsg,
-                notificationId = NOTIF_ID_FAILED
-            )
-            Result.failure()
         }
     }
 
