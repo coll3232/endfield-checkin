@@ -20,7 +20,7 @@ import org.json.JSONObject
  */
 class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
-    override async suspend fun doWork(): Result {
+    override suspend fun doWork(): Result {
         Log.d(TAG, "백그라운드 출석체크 태스크 시작")
         val prefs = applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val credToken = prefs.getString(KEY_CRED_TOKEN, null)
