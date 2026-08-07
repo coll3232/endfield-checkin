@@ -24,12 +24,12 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         Log.d(TAG, "백그라운드 출석체크 태스크 시작")
         val prefs = applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val credToken = prefs.getString(KEY_CRED_TOKEN, null)
+        val fullCookie = prefs.getString(KEY_FULL_COOKIE, null)
 
-        if (credToken.isNullOrEmpty()) {
-            Log.w(TAG, "저장된 cred 토큰이 없어 출석체크를 진행할 수 없습니다.")
+        if (credToken.isNullOrEmpty() && fullCookie.isNullOrEmpty()) {
+            Log.w(TAG, "저장된 cred 토큰이나 쿠키 정보가 없어 출석체크를 진행할 수 없습니다.")
             val msg = "SKPORT 웹뷰 로그인이 필요합니다."
             saveStatus("NEED_LOGIN", msg)
-            // 1. 출석체크 실패 알림 (로그인 필요)
             sendSystemNotification(
                 title = "엔드필드 출석체크 실패 ⚠️",
                 message = msg,
@@ -38,10 +38,12 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             return Result.failure()
         }
 
+        val tokenToUse = credToken ?: ""
+        val cookieToUse = fullCookie ?: ""
+
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val lastCheckDate = prefs.getString(KEY_LAST_CHECK_DATE, "")
 
-        // 2. 이미 오늘 출석체크가 완료된 경우 알림 발송
         if (todayStr == lastCheckDate && prefs.getString(KEY_LAST_CHECK_STATUS, "") == "SUCCESS") {
             Log.d(TAG, "오늘 이미 출석 완료됨")
             sendSystemNotification(
@@ -53,7 +55,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
 
         return try {
-            val (resultType, resultMessage) = performCheckInApi(credToken)
+            val (resultType, resultMessage) = performCheckInApi(tokenToUse, cookieToUse)
             when (resultType) {
                 ResultType.SUCCESS -> {
                     val msg = "명일방주: 엔드필드 일일 출석체크가 성공했습니다!"
@@ -106,26 +108,38 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         SUCCESS, ALREADY_CHECKED, FAILED
     }
 
-    private fun performCheckInApi(credToken: String): Pair<ResultType, String> {
+    private fun performCheckInApi(credToken: String, fullCookie: String): Pair<ResultType, String> {
         val bindingUrl = URL("https://zonai.skport.com/web/v1/game/endfield/binding")
         var gameRoleHeader = ""
 
         val userAgentStr = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        // 1. 쿠키 포맷팅 (cred 및 ACCOUNT_TOKEN 전달)
-        val formattedCookie = if (credToken.contains("=")) {
-            credToken
-        } else {
-            "cred=$credToken; ACCOUNT_TOKEN=$credToken"
+        // 쿠키 및 cred 헤더 구성
+        val cookieHeader = when {
+            fullCookie.isNotEmpty() -> fullCookie
+            credToken.contains("=") -> credToken
+            else -> "cred=$credToken; ACCOUNT_TOKEN=$credToken"
         }
 
-        // 2. 바인딩 캐릭터 정보 조회 시도 (sk-game-role 획득)
+        // cred 추출 시도
+        var actualCred = credToken
+        if (actualCred.isEmpty() && cookieHeader.contains("cred=")) {
+            for (p in cookieHeader.split(";")) {
+                val kv = p.trim().split("=", limit = 2)
+                if (kv.size == 2 && kv[0].equals("cred", ignoreCase = true)) {
+                    actualCred = kv[1]
+                    break
+                }
+            }
+        }
+
+        // 1. 바인딩 캐릭터 정보 조회 시도 (sk-game-role 획득)
         try {
             val bConn = bindingUrl.openConnection() as HttpURLConnection
             bConn.requestMethod = "GET"
             bConn.setRequestProperty("Accept", "application/json, text/plain, */*")
-            bConn.setRequestProperty("cred", credToken)
-            bConn.setRequestProperty("Cookie", formattedCookie)
+            if (actualCred.isNotEmpty()) bConn.setRequestProperty("cred", actualCred)
+            bConn.setRequestProperty("Cookie", cookieHeader)
             bConn.setRequestProperty("platform", "3")
             bConn.setRequestProperty("v", "1.0.0")
             bConn.setRequestProperty("Origin", "https://game.skport.com")
@@ -151,17 +165,17 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "바인딩 정보 조회 예외 (기본 헤더로 출석 시도): ${e.message}")
+            Log.w(TAG, "바인딩 정보 조회 예외: ${e.message}")
         }
 
-        // 3. 출석체크 API POST 호출
+        // 2. 출석체크 API POST 호출
         val url = URL("https://zonai.skport.com/web/v1/game/endfield/attendance")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Accept", "application/json, text/plain, */*")
         conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("cred", credToken)
-        conn.setRequestProperty("Cookie", formattedCookie)
+        if (actualCred.isNotEmpty()) conn.setRequestProperty("cred", actualCred)
+        conn.setRequestProperty("Cookie", cookieHeader)
         conn.setRequestProperty("platform", "3")
         conn.setRequestProperty("v", "1.0.0")
         conn.setRequestProperty("Origin", "https://game.skport.com")
@@ -243,6 +257,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         const val TAG = "EndfieldCheckInWorker"
         const val PREF_NAME = "EndfieldPrefs"
         const val KEY_CRED_TOKEN = "cred_token"
+        const val KEY_FULL_COOKIE = "full_cookie"
         const val KEY_LAST_CHECK_DATE = "last_check_date"
         const val KEY_LAST_CHECK_TIME = "last_check_time"
         const val KEY_LAST_CHECK_STATUS = "last_check_status"

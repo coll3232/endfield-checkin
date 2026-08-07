@@ -180,9 +180,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun parseAndSaveTokenStr(str: String) {
+        if (str.isEmpty()) return
+
+        // 1. 원본 쿠키 전체 문자열 저장
+        val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
+        val existingFull = prefs.getString(CheckInWorker.KEY_FULL_COOKIE, "") ?: ""
+        if (str.length > existingFull.length || str.contains("cred")) {
+            prefs.edit().putString(CheckInWorker.KEY_FULL_COOKIE, str).apply()
+        }
+
+        // 2. 개별 토큰 파싱 (limit = 2 로 이콜(=) 잘림 방지)
         val parts = str.split(";")
         for (part in parts) {
-            val kv = part.split("=")
+            val kv = part.split("=", limit = 2)
             if (kv.size >= 2) {
                 val k = kv[0].trim().lowercase()
                 val v = kv[1].trim()
