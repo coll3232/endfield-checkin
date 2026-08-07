@@ -17,6 +17,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -93,7 +94,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                                     )
 
                                     if (continuation.isActive) {
-                                        continuation.resume(Result.success(), null)
+                                        continuation.resume(Result.success())
                                     }
                                     offscreenWebView.destroy()
                                 }, 3000)
@@ -111,7 +112,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                                 message = "페이지 로딩 실패: $description",
                                 notificationId = NOTIF_ID_FAILED
                             )
-                            continuation.resume(Result.failure(), null)
+                            continuation.resume(Result.failure())
                         }
                     }
                 }
@@ -127,7 +128,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                         message = "오류: ${e.message}",
                         notificationId = NOTIF_ID_FAILED
                     )
-                    continuation.resume(Result.failure(), null)
+                    continuation.resume(Result.failure())
                 }
             }
         }
