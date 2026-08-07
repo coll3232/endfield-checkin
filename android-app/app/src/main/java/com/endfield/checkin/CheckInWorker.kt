@@ -107,13 +107,70 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     }
 
     private fun performCheckInApi(credToken: String): Pair<ResultType, String> {
+        val bindingUrl = URL("https://zonai.skport.com/web/v1/game/endfield/binding")
+        var gameRoleHeader = ""
+
+        val userAgentStr = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        // 1. 쿠키 포맷팅 (cred 및 ACCOUNT_TOKEN 전달)
+        val formattedCookie = if (credToken.contains("=")) {
+            credToken
+        } else {
+            "cred=$credToken; ACCOUNT_TOKEN=$credToken"
+        }
+
+        // 2. 바인딩 캐릭터 정보 조회 시도 (sk-game-role 획득)
+        try {
+            val bConn = bindingUrl.openConnection() as HttpURLConnection
+            bConn.requestMethod = "GET"
+            bConn.setRequestProperty("Accept", "application/json, text/plain, */*")
+            bConn.setRequestProperty("cred", credToken)
+            bConn.setRequestProperty("Cookie", formattedCookie)
+            bConn.setRequestProperty("platform", "3")
+            bConn.setRequestProperty("v", "1.0.0")
+            bConn.setRequestProperty("Origin", "https://game.skport.com")
+            bConn.setRequestProperty("Referer", "https://game.skport.com/")
+            bConn.setRequestProperty("User-Agent", userAgentStr)
+            bConn.connectTimeout = 8000
+            bConn.readTimeout = 8000
+
+            if (bConn.responseCode == 200) {
+                val bRes = bConn.inputStream.bufferedReader().use { it.readText() }
+                val bJson = JSONObject(bRes)
+                if (bJson.optInt("code") == 0 && bJson.has("data")) {
+                    val list = bJson.getJSONObject("data").optJSONArray("list")
+                    if (list != null && list.length() > 0) {
+                        val roleObj = list.getJSONObject(0)
+                        val roleId = roleObj.optString("roleId", "")
+                        val serverId = roleObj.optString("serverId", "")
+                        if (roleId.isNotEmpty()) {
+                            gameRoleHeader = "3_${roleId}_${serverId}"
+                            Log.d(TAG, "감지된 sk-game-role: $gameRoleHeader")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "바인딩 정보 조회 예외 (기본 헤더로 출석 시도): ${e.message}")
+        }
+
+        // 3. 출석체크 API POST 호출
         val url = URL("https://zonai.skport.com/web/v1/game/endfield/attendance")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
+        conn.setRequestProperty("Accept", "application/json, text/plain, */*")
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("cred", credToken)
+        conn.setRequestProperty("Cookie", formattedCookie)
         conn.setRequestProperty("platform", "3")
         conn.setRequestProperty("v", "1.0.0")
+        conn.setRequestProperty("Origin", "https://game.skport.com")
+        conn.setRequestProperty("Referer", "https://game.skport.com/")
+        conn.setRequestProperty("User-Agent", userAgentStr)
+        if (gameRoleHeader.isNotEmpty()) {
+            conn.setRequestProperty("sk-game-role", gameRoleHeader)
+        }
+
         conn.connectTimeout = 10000
         conn.readTimeout = 10000
         conn.doOutput = true
@@ -125,8 +182,11 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
 
         val responseCode = conn.responseCode
+        val stream = if (responseCode == 200) conn.inputStream else conn.errorStream
+        val responseString = stream?.bufferedReader()?.use { it.readText() } ?: ""
+        Log.d(TAG, "출석 API 응답 ($responseCode): $responseString")
+
         if (responseCode == 200) {
-            val responseString = conn.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(responseString)
             val code = json.optInt("code", -1)
             val msg = json.optString("message", "")
@@ -136,8 +196,10 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 msg.contains("already") || code == 10001 -> Pair(ResultType.ALREADY_CHECKED, "이미 출석 완료됨")
                 else -> Pair(ResultType.FAILED, "실패 (코드: $code, 메시지: $msg)")
             }
+        } else if (responseCode == 401) {
+            return Pair(ResultType.FAILED, "인증 실패 (HTTP 401): 웹뷰에서 SKPORT 로그아웃 후 다시 로그인해 주세요.")
         }
-        return Pair(ResultType.FAILED, "서버 응답 오류 (HTTP $responseCode)")
+        return Pair(ResultType.FAILED, "서버 응답 오류 (HTTP $responseCode): $responseString")
     }
 
     private fun sendSystemNotification(title: String, message: String, notificationId: Int) {
