@@ -87,7 +87,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                         message = resultMessage,
                         notificationId = NOTIF_ID_FAILED
                     )
-                    Result.retry()
+                    Result.failure()
                 }
             }
         } catch (e: Exception) {
@@ -100,7 +100,7 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 message = errorMsg,
                 notificationId = NOTIF_ID_FAILED
             )
-            Result.retry()
+            Result.failure()
         }
     }
 
