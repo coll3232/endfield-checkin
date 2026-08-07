@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#0D0F12">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="명일방주: 엔드필드 자동 출석체크"
+        android:textColor="#FFB800"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/txtStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="상태 확인 중..."
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:layout_marginBottom="12dp" />
+
+    <Button
+        android:id="@+id/btnCheckNow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="지금 수동 출석체크"
+        android:backgroundTint="#FFB800"
+        android:textColor="#000000"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SKPORT 웹뷰 (최초 1회 로그인 필요)"
+        android:textColor="#8B949E"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>

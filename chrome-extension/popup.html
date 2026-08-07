@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>명일방주: 엔드필드 자동 출석체크</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-badge">
+          <span class="logo-text">EF</span>
+        </div>
+        <div class="brand-text">
+          <h1>ARKNIGHTS: ENDFIELD</h1>
+          <span class="sub-title">자동 출석체크 매니저</span>
+        </div>
+      </div>
+      <div class="status-chip" id="statusChip">
+        <span class="dot"></span>
+        <span id="statusText">대기 중</span>
+      </div>
+    </header>
+
+    <!-- Main Status Card -->
+    <main class="main-content">
+      <div class="card status-card">
+        <div class="card-icon" id="cardIcon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="card-info">
+          <span class="label">최근 출석 확인</span>
+          <h2 id="lastTimeDisplay">기록 없음</h2>
+          <p id="messageDisplay" class="message-text">체크 중입니다...</p>
+        </div>
+      </div>
+
+      <!-- Action Area -->
+      <div class="action-section">
+        <button id="btnCheckIn" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>지금 즉시 출석체크</span>
+        </button>
+        <a id="btnSkport" href="https://game.skport.com/endfield/sign-in" target="_blank" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          <span>SKPORT 사이트 열기</span>
+        </a>
+      </div>
+
+      <!-- Settings Section -->
+      <div class="settings-section">
+        <h3>자동 실행 설정</h3>
+        
+        <div class="setting-item">
+          <div class="setting-label">
+            <span>크롬 실행 시 자동 출석체크</span>
+            <small>브라우저를 켤 때 백그라운드 작동</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleAutoCheckIn" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-label">
+            <span>크롬 실행 후 대기 시간 (초)</span>
+            <small>실행 후 정해진 시간 지나고 작동</small>
+          </div>
+          <div class="input-number-wrap">
+            <input type="number" id="inputDelaySec" min="1" max="300" value="10">
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-label">
+            <span>결과 토스트 알림</span>
+            <small>출석 완료/실패 시 윈도우 알림 표시</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggleNotify" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Arknights: Endfield Fan Assistant</span>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

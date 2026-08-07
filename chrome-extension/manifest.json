@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "명일방주: 엔드필드 자동 출석체크 (Endfield Auto Check-in)",
+  "version": "1.0.0",
+  "description": "크롬 실행 후 백그라운드에서 SKPORT 엔드필드 일일 출석체크를 조용히 자동 수행합니다.",
+  "permissions": [
+    "cookies",
+    "alarms",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.skport.com/*",
+    "https://*.gryphline.com/*",
+    "https://*.hypergryph.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "엔드필드 출석체크 현황"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
