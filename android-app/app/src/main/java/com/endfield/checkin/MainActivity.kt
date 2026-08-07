@@ -276,24 +276,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun triggerImmediateCheckIn() {
-        var token = extractAndSaveCookies()
-        if (token.isNullOrEmpty()) {
-            val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
-            token = prefs.getString(CheckInWorker.KEY_CRED_TOKEN, null)
-        }
+        Toast.makeText(this, "웹뷰 출석체크 진행 중입니다...", Toast.LENGTH_SHORT).show()
 
-        if (token.isNullOrEmpty()) {
-            Toast.makeText(this, "웹뷰에서 SKPORT 로그인을 완료해 주세요. (토큰 감지 대기 중)", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        Toast.makeText(this, "출석체크 실행 중... (상단 알림을 확인하세요)", Toast.LENGTH_SHORT).show()
-
-        val immediateWork = OneTimeWorkRequestBuilder<CheckInWorker>().build()
-        WorkManager.getInstance(this).enqueue(immediateWork)
+        // SKPORT 공식 웹페이지 상에서 출석 버튼 직접 클릭 시도 (Cloudflare/401 우회)
+        webView.loadUrl("https://game.skport.com/endfield/sign-in")
 
         webView.postDelayed({
-            updateStatusDisplay()
+            val autoClickJs = """
+                (function() {
+                    try {
+                        var elements = document.querySelectorAll('*');
+                        var clicked = false;
+                        for (var i = 0; i < elements.length; i++) {
+                            var el = elements[i];
+                            var txt = el.innerText || el.textContent || '';
+                            if (txt && (txt.trim() === '출석하기' || txt.trim() === '출석 완료' || txt.includes('Sign in') || txt.includes('Check in'))) {
+                                el.click();
+                                clicked = true;
+                                break;
+                            }
+                        }
+                        return clicked ? 'CLICKED' : 'SEARCHING';
+                    } catch(e) {
+                        return 'ERROR';
+                    }
+                })();
+            """.trimIndent()
+
+            webView.evaluateJavascript(autoClickJs) { result ->
+                Log.d("EndfieldCheckIn", "웹뷰 클릭 결과: $result")
+                Toast.makeText(this, "웹뷰 출석 버튼 클릭이 시도되었습니다. (상단 알림 확인)", Toast.LENGTH_SHORT).show()
+
+                // 결과 확인을 위해 2초 후 상태 업데이트 및 알림 발송
+                webView.postDelayed({
+                    val immediateWork = OneTimeWorkRequestBuilder<CheckInWorker>().build()
+                    WorkManager.getInstance(this).enqueue(immediateWork)
+                    updateStatusDisplay()
+                }, 2000)
+            }
         }, 3000)
     }
 
