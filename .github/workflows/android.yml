@@ -27,7 +27,7 @@ jobs:
       working-directory: android-app
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --stacktrace --info
       working-directory: android-app
 
     - name: Upload APK Artifact
