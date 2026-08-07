@@ -2,9 +2,13 @@ package com.endfield.checkin
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -31,8 +35,11 @@ class MainActivity : AppCompatActivity() {
         txtStatus = findViewById(R.id.txtStatus)
         btnCheckNow = findViewById(R.id.btnCheckNow)
 
-        // Android 13 (API 33) 이상 알림 권한 요청
+        // 1. Android 13+ 알림 권한 요청
         requestNotificationPermission()
+
+        // 2. 배터리 최적화 예외 요청 안내 (백그라운드 차단 방지)
+        requestBatteryOptimizationExemption()
 
         setupWebView()
         updateStatusDisplay()
@@ -53,6 +60,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // 기기별 설정 이동 처리 예외 방지
+                }
+            }
+        }
+    }
+
     private fun setupWebView() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
@@ -60,45 +83,75 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                extractCookies(url)
+                extractAndSaveCookies()
             }
         }
 
         webView.loadUrl("https://game.skport.com/endfield/sign-in")
     }
 
-    private fun extractCookies(url: String?) {
-        val cookies = CookieManager.getInstance().getCookie("https://game.skport.com")
-        if (!cookies.isNullOrEmpty()) {
+    private fun extractAndSaveCookies(): String? {
+        val cm = CookieManager.getInstance()
+        cm.flush()
+
+        val domains = listOf(
+            "https://game.skport.com",
+            "https://zonai.skport.com",
+            "https://skport.com",
+            "https://pas.skport.com"
+        )
+
+        var foundToken: String? = null
+
+        for (domain in domains) {
+            val cookies = cm.getCookie(domain) ?: continue
             val cookieMap = cookies.split(";").mapNotNull {
                 val parts = it.split("=")
                 if (parts.size >= 2) parts[0].trim() to parts[1].trim() else null
             }.toMap()
 
-            val cred = cookieMap["cred"] ?: cookieMap["ACCOUNT_TOKEN"]
-            if (!cred.isNullOrEmpty()) {
-                val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
-                prefs.edit().putString(CheckInWorker.KEY_CRED_TOKEN, cred).apply()
-                txtStatus.text = "상태: SKPORT 로그인 완료 (토큰 감지됨)"
+            // 키 탐색 (대소문자 무관)
+            for ((key, value) in cookieMap) {
+                val lowerKey = key.lowercase()
+                if (lowerKey == "cred" || lowerKey == "account_token" || lowerKey == "sk_token" || lowerKey == "token" || lowerKey == "user_token") {
+                    if (value.isNotEmpty()) {
+                        foundToken = value
+                        break
+                    }
+                }
             }
+
+            if (foundToken != null) break
         }
+
+        if (foundToken != null) {
+            val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString(CheckInWorker.KEY_CRED_TOKEN, foundToken).apply()
+            txtStatus.text = "상태: SKPORT 로그인 완료 (토큰 정상 감지됨)"
+        }
+
+        return foundToken
     }
 
     private fun triggerImmediateCheckIn() {
         val prefs = getSharedPreferences(CheckInWorker.PREF_NAME, Context.MODE_PRIVATE)
-        val token = prefs.getString(CheckInWorker.KEY_CRED_TOKEN, null)
+        var token = prefs.getString(CheckInWorker.KEY_CRED_TOKEN, null)
+
+        // 저장된 토큰이 없으면 실시간으로 웹뷰 쿠키 재추출 시도
+        if (token.isNullOrEmpty()) {
+            token = extractAndSaveCookies()
+        }
 
         if (token.isNullOrEmpty()) {
-            Toast.makeText(this, "웹뷰에서 SKPORT 로그인을 진행해 주세요.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "웹뷰에서 SKPORT 로그인을 완료해 주세요.", Toast.LENGTH_SHORT).show()
             return
         }
 
         Toast.makeText(this, "출석체크 실행 중... (상단 알림을 확인하세요)", Toast.LENGTH_SHORT).show()
-        
-        // WorkManager 단발성 태스크 즉시 실행 (시스템 알림 자동 유발)
+
         val immediateWork = OneTimeWorkRequestBuilder<CheckInWorker>().build()
         WorkManager.getInstance(this).enqueue(immediateWork)
-        
+
         webView.postDelayed({
             updateStatusDisplay()
         }, 3000)
@@ -111,4 +164,5 @@ class MainActivity : AppCompatActivity() {
         txtStatus.text = "최근 출석: $lastTime\n상태: $lastMsg"
     }
 }
+
 
