@@ -19,16 +19,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Generate Gradle Wrapper
-      run: gradle wrapper --gradle-version 8.1.1
-      working-directory: android-app
-
-    - name: Make gradlew executable
-      run: chmod +x gradlew
-      working-directory: android-app
+    - name: Setup Gradle 8.1.1
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.1.1'
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      run: gradle assembleDebug --stacktrace
       working-directory: android-app
 
     - name: Upload APK Artifact
